@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniVision Security Cam — Mobile Alert System</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+</head>
+<body>
+
+  <header class="header-bar">
+    <div class="brand">
+      <div class="brand-icon">🛡️</div>
+      <div>
+        <h1>OmniVision Security <span class="brand-badge">SMS & MOBILE PUSH v2.1 (FIXED)</span></h1>
+      </div>
+    </div>
+
+    <div class="status-indicators">
+      <div class="pill">
+        <div id="status-dot" class="dot"></div>
+        <span id="status-text">AI Security Engine Active</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+    <aside class="card left-col">
+      <div class="card-title">
+        <span>📱 Mobile Alert Settings</span>
+      </div>
+
+      <div class="form-group">
+        <label for="input-ntfy-topic">
+          <span>NTFY Mobile Topic (Phone App)</span>
+        </label>
+        <input type="text" id="input-ntfy-topic" value="my_secure_camera_alerts" placeholder="my_school_demo_cam_99">
+        <span style="font-size: 0.68rem; color: var(--text-dim);">Enter the same topic you subscribed to in the ntfy mobile app.</span>
+      </div>
+
+      <div class="form-group">
+        <label for="input-phone">Target Phone Number (Optional SMS)</label>
+        <input type="text" id="input-phone" value="+1234567890" placeholder="+1234567890">
+      </div>
+
+      <div class="form-group">
+        <label for="input-cooldown">Alert Cooldown (Seconds)</label>
+        <input type="number" id="input-cooldown" value="10" min="3" max="300">
+      </div>
+
+      <div class="form-group">
+        <label for="slider-conf">
+          <span>Detection Sensitivity</span>
+          <span id="badge-conf" style="color: var(--accent-neon); font-family: var(--mono-font);">45%</span>
+        </label>
+        <input type="range" id="slider-conf" min="0.1" max="0.9" step="0.05" value="0.45" style="accent-color: var(--accent-cyan);">
+      </div>
+
+      <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+        <div class="switch-row">
+          <span style="font-size: 0.8rem;">📲 Instant NTFY Push</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-ntfy" checked>
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="switch-row">
+          <span style="font-size: 0.8rem;">💬 Cellular SMS (Twilio)</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-sms">
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="switch-row">
+          <span style="font-size: 0.8rem;">📐 Trigger Only on Zone Intrusion</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-zone-only">
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+      </div>
+
+      <button id="btn-test-sms" class="btn btn-secondary" style="margin-top: 0.5rem; width: 100%;">
+        <span>🧪</span> Send Test Alert to Phone
+      </button>
+    </aside>
+
+    <section class="stage-wrapper">
+      <div class="camera-feed-box">
+        <video id="camera-video" autoplay playsinline muted></video>
+        <canvas id="overlay-canvas"></canvas>
+        <canvas id="zone-canvas"></canvas>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-start" class="btn btn-primary"><span>⚡</span> Start Security Camera</button>
+        <button id="btn-stop" class="btn btn-danger" disabled><span>⏹</span> Stop Camera</button>
+        <button id="btn-zone" class="btn btn-secondary"><span>📐</span> Draw Security Zone</button>
+        <button id="btn-clear-zone" class="btn btn-secondary"><span>🗑️</span> Reset Zone</button>
+      </div>
+    </section>
+
+    <aside class="card right-col">
+      <div class="card-title">
+        <span>📲 Phone Alert Simulator</span>
+      </div>
+
+      <div class="phone-mockup-card">
+        <div class="phone-notch"></div>
+        <div class="phone-screen-header">
+          <span>9:41</span>
+          <span>5G • 100%</span>
+        </div>
+
+        <div id="phone-alert-container">
+          <div class="phone-notification-banner">
+            <div class="banner-header">
+              <span class="banner-app">🚨 SECURITY SYSTEM</span>
+              <span class="banner-time">Now</span>
+            </div>
+            <div class="banner-body">
+              Camera is armed. Any detected target will push an instant alert to your mobile phone.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-title" style="margin-top: 0.5rem;">
+        <span>📡 Recent Security Triggers</span>
+      </div>
+      <div id="alert-event-feed" class="events-list">
+        <div style="text-align: center; color: var(--text-dim); padding: 1.5rem; font-size: 0.78rem;">
+          No alerts fired yet.
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="js/audio.js"></script>
+  <script src="js/detector.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

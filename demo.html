@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniVision Security Cam — Mobile Alert System</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <style>
+:root {
+  --bg-dark: #070a11;
+  --bg-card: rgba(15, 23, 42, 0.85);
+  --bg-card-hover: rgba(30, 41, 59, 0.9);
+  --border-color: rgba(56, 189, 248, 0.25);
+  --border-alert: #f43f5e;
+  
+  --accent-cyan: #06b6d4;
+  --accent-neon: #00f2fe;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+  
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  
+  --mono-font: 'JetBrains Mono', 'Fira Code', monospace;
+  --sans-font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  --radius-md: 10px;
+  --radius-lg: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--sans-font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(244, 63, 94, 0.06) 0%, transparent 40%),
+    linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+}
+
+/* Header */
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 2rem;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-icon {
+  font-size: 1.5rem;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-rose));
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+}
+
+.brand h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.brand-badge {
+  font-size: 0.65rem;
+  font-family: var(--mono-font);
+  background: rgba(244, 63, 94, 0.15);
+  color: var(--accent-rose);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  margin-left: 8px;
+}
+
+.status-indicators {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-family: var(--mono-font);
+  background: rgba(0, 0, 0, 0.5);
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald);
+}
+
+.dot.alerting {
+  background: var(--accent-rose);
+  box-shadow: 0 0 12px var(--accent-rose);
+  animation: pulse-red 0.8s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.5; }
+}
+
+/* Main Layout */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr 360px;
+  gap: 1.25rem;
+  padding: 1.5rem 2rem;
+  flex: 1;
+  max-width: 1920px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (max-width: 1366px) {
+  .dashboard-grid {
+    grid-template-columns: 300px 1fr;
+  }
+  .right-col {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .left-col, .right-col {
+    grid-column: span 1;
+  }
+}
+
+.card {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+.card-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-neon);
+  font-family: var(--mono-font);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.5rem;
+}
+
+/* Center Stage */
+.stage-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.camera-feed-box {
+  position: relative;
+  background: #000;
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border-color);
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+  transition: border-color 0.3s ease;
+}
+
+.camera-feed-box.intruder-active {
+  border-color: var(--accent-rose);
+  animation: pulse-border 0.6s infinite alternate;
+}
+
+@keyframes pulse-border {
+  from { box-shadow: 0 0 10px var(--accent-rose); }
+  to { box-shadow: 0 0 35px var(--accent-rose); }
+}
+
+#camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+#overlay-canvas, #zone-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#overlay-canvas { pointer-events: none; }
+#zone-canvas { cursor: crosshair; }
+
+/* Control Buttons */
+.btn-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-cyan), #2563eb);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: #fff;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--accent-cyan);
+}
+
+.btn-active {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: var(--accent-rose);
+  color: var(--accent-rose);
+}
+
+/* Form Controls */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.form-group label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+}
+
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 0.55rem 0.8rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 0.82rem;
+  font-family: var(--sans-font);
+  outline: none;
+}
+
+.form-group input:focus, .form-group select:focus {
+  border-color: var(--accent-neon);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+}
+
+/* Phone Mockup Preview */
+.phone-mockup-card {
+  background: #000;
+  border-radius: 28px;
+  border: 4px solid #334155;
+  padding: 1rem;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  position: relative;
+}
+
+.phone-notch {
+  width: 80px;
+  height: 14px;
+  background: #1e293b;
+  border-radius: 10px;
+  margin: 0 auto;
+}
+
+.phone-screen-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  font-family: var(--mono-font);
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+/* SMS / Push Alert Banner Notification on Phone */
+.phone-notification-banner {
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid rgba(244, 63, 94, 0.4);
+  border-left: 4px solid var(--accent-rose);
+  border-radius: 14px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  animation: slide-down 0.4s ease;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.banner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+}
+
+.banner-app {
+  font-weight: 700;
+  color: var(--accent-rose);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.banner-time {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+}
+
+.banner-body {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--text-main);
+}
+
+.banner-image-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border-color);
+  background: #000;
+  display: block;
+}
+
+/* Event Logs Feed */
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.event-entry {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid var(--accent-cyan);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+}
+
+.event-entry.alert-fired {
+  border-left-color: var(--accent-rose);
+  background: rgba(244, 63, 94, 0.1);
+}
+
+.event-title { font-weight: 600; }
+.event-ts { font-family: var(--mono-font); font-size: 0.68rem; color: var(--text-dim); }
+
+/* Switch Toggle */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 20px;
+}
+
+.switch input { opacity: 0; width: 0; height: 0; }
+
+.slider-toggle {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  transition: 0.3s;
+}
+
+.slider-toggle:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #fff;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+input:checked + .slider-toggle { background-color: var(--accent-cyan); }
+input:checked + .slider-toggle:before { transform: translateX(18px); }
+  </style>
+</head>
+<body>
+
+  <header class="header-bar">
+    <div class="brand">
+      <div class="brand-icon">🛡️</div>
+      <div>
+        <h1>OmniVision Security <span class="brand-badge">PHOTO PUSH & LIVE STREAM v3.0</span></h1>
+      </div>
+    </div>
+
+    <div class="status-indicators">
+      <div class="pill">
+        <div id="status-dot" class="dot"></div>
+        <span id="status-text">AI Security Engine Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+    <aside class="card left-col">
+      <div class="card-title">
+        <span>📱 Mobile Notification Setup</span>
+      </div>
+
+      <div class="form-group">
+        <label for="input-ntfy-topic">
+          <span>NTFY Mobile Topic (Phone App)</span>
+        </label>
+        <input type="text" id="input-ntfy-topic" value="my_secure_camera_alerts" placeholder="my_school_demo_cam_99">
+        <span style="font-size: 0.68rem; color: var(--text-dim);">Enter the same topic subscribed in your phone's 'ntfy' app.</span>
+      </div>
+
+      <div class="form-group">
+        <label for="input-cooldown">Alert Cooldown (Seconds)</label>
+        <input type="number" id="input-cooldown" value="8" min="3" max="300">
+      </div>
+
+      <div class="form-group">
+        <label for="slider-conf">
+          <span>Detection Sensitivity</span>
+          <span id="badge-conf" style="color: var(--accent-neon); font-family: var(--mono-font);">45%</span>
+        </label>
+        <input type="range" id="slider-conf" min="0.1" max="0.9" step="0.05" value="0.45" style="accent-color: var(--accent-cyan);">
+      </div>
+
+      <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+        <div class="switch-row">
+          <span style="font-size: 0.8rem;">📸 Push Photo Snapshot</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-photo-push" checked>
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="switch-row">
+          <span style="font-size: 0.8rem;">📐 Trigger Only on Zone Intrusion</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-zone-only">
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+      </div>
+
+      <button id="btn-test-sms" class="btn btn-secondary" style="margin-top: 0.5rem; width: 100%;">
+        <span>📸</span> Send Test Photo Alert to Phone
+      </button>
+
+      <div style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 8px; padding: 10px; margin-top: 0.5rem; font-size: 0.74rem;">
+        <strong style="color: var(--accent-neon);">📺 Want Live Mobile Video Stream?</strong><br>
+        Run <code>run_live_stream.bat</code> (or <code>python live_mobile_stream.py</code>) to watch the live camera stream on your phone browser over Wi-Fi!
+      </div>
+    </aside>
+
+    <section class="stage-wrapper">
+      <div class="camera-feed-box">
+        <video id="camera-video" autoplay playsinline muted></video>
+        <canvas id="overlay-canvas"></canvas>
+        <canvas id="zone-canvas"></canvas>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-start" class="btn btn-primary"><span>⚡</span> Start Security Camera</button>
+        <button id="btn-stop" class="btn btn-danger" disabled><span>⏹</span> Stop Camera</button>
+        <button id="btn-zone" class="btn btn-secondary"><span>📐</span> Draw Security Zone</button>
+        <button id="btn-clear-zone" class="btn btn-secondary"><span>🗑️</span> Reset Zone</button>
+      </div>
+    </section>
+
+    <aside class="card right-col">
+      <div class="card-title">
+        <span>📲 Phone Alert Simulator</span>
+      </div>
+
+      <div class="phone-mockup-card">
+        <div class="phone-notch"></div>
+        <div class="phone-screen-header">
+          <span>9:41</span>
+          <span>5G • 100%</span>
+        </div>
+
+        <div id="phone-alert-container">
+          <div class="phone-notification-banner">
+            <div class="banner-header">
+              <span class="banner-app">🚨 SECURITY SYSTEM</span>
+              <span class="banner-time">Now</span>
+            </div>
+            <div class="banner-body">
+              Camera is armed. Any detected target will push an instant alert with photo to your mobile phone.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-title" style="margin-top: 0.5rem;">
+        <span>📡 Recent Security Triggers</span>
+      </div>
+      <div id="alert-event-feed" class="events-list">
+        <div style="text-align: center; color: var(--text-dim); padding: 1.5rem; font-size: 0.78rem;">
+          No alerts fired yet.
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+class SecurityAudio {
+  constructor() {
+    this.ctx = null;
+    this.audioEnabled = true;
+    this.speechEnabled = true;
+    this.lastSpeech = 0;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  playSiren() {
+    if (!this.audioEnabled) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const now = this.ctx.currentTime;
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(500, now);
+      osc.frequency.linearRampToValueAtTime(1000, now + 0.2);
+      osc.frequency.linearRampToValueAtTime(500, now + 0.4);
+
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.45);
+    } catch(e) {}
+  }
+
+  speak(text) {
+    if (!this.speechEnabled || !('speechSynthesis' in window)) return;
+    const now = Date.now();
+    if (now - this.lastSpeech < 4000) return;
+    this.lastSpeech = now;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1.05;
+      window.speechSynthesis.speak(u);
+    } catch(e) {}
+  }
+}
+window.secAudio = new SecurityAudio();
+/**
+ * Security Detector Engine with Zone Monitoring & Snapshot Composer
+ */
+class ClientDetector {
+  constructor() {
+    this.model = null;
+    this.isLoaded = false;
+    this.minConfidence = 0.45;
+    this.targetWhitelist = new Set(['person', 'cell phone', 'mouse', 'backpack', 'bottle', 'car', 'dog', 'cat', 'laptop']);
+    this.securityZone = null; // {x, y, w, h} normalized
+    this.isDrawingZone = false;
+  }
+
+  async load() {
+    if (this.model) return true;
+    try {
+      if (typeof cocoSsd === 'undefined') throw new Error('cocoSsd script missing');
+      this.model = await cocoSsd.load({ base: 'mobilenet_v2' });
+      this.isLoaded = true;
+      return true;
+    } catch(e) {
+      console.error('Model load failed:', e);
+      return false;
+    }
+  }
+
+  async detect(videoEl) {
+    if (!this.model || !videoEl || videoEl.readyState < 2) return [];
+    try {
+      const raw = await this.model.detect(videoEl, 15);
+      return raw.filter(d => {
+        if (d.score < this.minConfidence) return false;
+        if (this.targetWhitelist.size > 0 && !this.targetWhitelist.has(d.class.toLowerCase())) {
+          return false;
+        }
+        return true;
+      });
+    } catch(e) {
+      return [];
+    }
+  }
+
+  checkZone(det, w, h) {
+    if (!this.securityZone) return false;
+    const [bx, by, bw, bh] = det.bbox;
+    const cx = bx + bw / 2;
+    const cy = by + bh / 2;
+    const zx = this.securityZone.x * w;
+    const zy = this.securityZone.y * h;
+    const zw = this.securityZone.w * w;
+    const zh = this.securityZone.h * h;
+    return (cx >= zx && cx <= zx + zw && cy >= zy && cy <= zy + zh);
+  }
+
+  renderHUD(ctx, detections, w, h) {
+    ctx.clearRect(0, 0, w, h);
+
+    // Draw Zone
+    if (this.securityZone) {
+      const zx = this.securityZone.x * w;
+      const zy = this.securityZone.y * h;
+      const zw = this.securityZone.w * w;
+      const zh = this.securityZone.h * h;
+      ctx.save();
+      ctx.strokeStyle = '#f43f5e';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
+      ctx.strokeRect(zx, zy, zw, zh);
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.15)';
+      ctx.fillRect(zx, zy, zw, zh);
+      ctx.fillStyle = '#f43f5e';
+      ctx.font = 'bold 11px monospace';
+      ctx.fillText('RESTRICTED SECURITY ZONE', zx + 8, zy + 18);
+      ctx.restore();
+    }
+
+    let intrusion = false;
+
+    detections.forEach(det => {
+      const [x, y, bw, bh] = det.bbox;
+      const conf = Math.round(det.score * 100);
+      const isIntruder = this.checkZone(det, w, h);
+      if (isIntruder) intrusion = true;
+
+      const color = isIntruder ? '#f43f5e' : '#00f2fe';
+
+      // Draw box
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(x, y, bw, bh);
+
+      // Corner brackets
+      const cLen = Math.min(16, Math.min(bw, bh) / 3);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x, y, cLen, 3);
+      ctx.fillRect(x, y, 3, cLen);
+      ctx.fillRect(x + bw - cLen, y, cLen, 3);
+      ctx.fillRect(x + bw - 3, y, 3, cLen);
+
+      // Tag badge
+      const tag = `${det.class.toUpperCase()} ${conf}%`;
+      ctx.font = 'bold 11px monospace';
+      const tw = ctx.measureText(tag).width;
+      ctx.fillStyle = isIntruder ? '#f43f5e' : 'rgba(10, 14, 23, 0.85)';
+      ctx.fillRect(x, Math.max(0, y - 20), tw + 10, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(tag, x + 5, Math.max(14, y - 6));
+    });
+
+    return intrusion;
+  }
+
+  generateSnapshot(videoEl, canvasEl, detections) {
+    if (!videoEl || videoEl.videoWidth === 0) return null;
+    const w = videoEl.videoWidth;
+    const h = videoEl.videoHeight;
+    const off = document.createElement('canvas');
+    off.width = w;
+    off.height = h;
+    const offCtx = off.getContext('2d');
+
+    offCtx.drawImage(videoEl, 0, 0, w, h);
+    if (canvasEl) offCtx.drawImage(canvasEl, 0, 0, w, h);
+
+    // Banner Watermark
+    offCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    offCtx.fillRect(0, h - 30, w, 30);
+    offCtx.fillStyle = '#f43f5e';
+    offCtx.font = 'bold 12px monospace';
+    const ts = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    offCtx.fillText(`SECURITY ALERT PHOTO | ${ts} | TARGETS: ${detections.length}`, 12, h - 10);
+
+    return off.toDataURL('image/jpeg', 0.85);
+  }
+}
+window.secDetector = new ClientDetector();
+/**
+ * Mobile Push Notification Dispatcher with Real Photo Attachments
+ */
+class NotificationEngine {
+  constructor() {
+    this.phone = '+1234567890';
+    this.ntfyTopic = 'my_secure_camera_alerts';
+    this.cooldownSec = 10;
+    this.lastAlertTime = 0;
+    this.alertHistory = [];
+  }
+
+  canSend() {
+    const now = Date.now() / 1000;
+    return (now - this.lastAlertTime >= this.cooldownSec);
+  }
+
+  async dispatchSecurityAlert(detections, snapshotDataUrl, zoneName = null) {
+    if (!this.canSend()) return false;
+    this.lastAlertTime = Date.now() / 1000;
+
+    const timeStr = new Date().toLocaleTimeString();
+    const classNames = detections.map(d => `${d.class} (${Math.round(d.score * 100)}%)`).join(', ');
+    const locText = zoneName ? ` in ${zoneName}` : '';
+    const alertMsg = `SECURITY ALERT: Detected ${classNames}${locText} at ${timeStr}!`;
+
+    console.log('[+] Dispatching mobile notification with snapshot:', alertMsg);
+
+    // 1. Update UI Phone Simulator
+    this.updatePhoneMockup(alertMsg, snapshotDataUrl, timeStr);
+
+    // 2. Dispatch Real NTFY Push with Photo Snapshot Attached
+    if (this.ntfyTopic) {
+      await this.sendNtfyWithSnapshot(alertMsg, snapshotDataUrl);
+    }
+
+    // 3. Log event
+    const alertEntry = {
+      id: 'alert_' + Date.now(),
+      time: timeStr,
+      msg: alertMsg,
+      image: snapshotDataUrl,
+      targets: classNames
+    };
+    this.alertHistory.unshift(alertEntry);
+    this.renderAlertLogs();
+
+    return true;
+  }
+
+  async sendNtfyWithSnapshot(message, snapshotDataUrl) {
+    const topic = (this.ntfyTopic || 'my_secure_camera_alerts').trim();
+    if (!topic) return;
+
+    try {
+      // Clean ASCII message for HTTP headers
+      const asciiMsg = message.replace(/[^\x20-\x7E]/g, '').trim();
+
+      if (snapshotDataUrl) {
+        // Convert base64 dataUrl to binary JPEG Blob
+        const res = await fetch(snapshotDataUrl);
+        const imageBlob = await res.blob();
+
+        // Upload photo directly to NTFY
+        const pushRes = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
+          method: 'POST',
+          body: imageBlob,
+          headers: {
+            'Title': 'Security Cam Alert: Target Detected',
+            'Message': asciiMsg,
+            'Filename': `snapshot_${Date.now()}.jpg`,
+            'Priority': '4',
+            'Tags': 'warning,camera'
+          }
+        });
+
+        if (pushRes.ok) {
+          console.log(`[✓] PHOTO ALERT sent to phone on topic: ${topic}`);
+        } else {
+          console.warn('NTFY photo push error:', await pushRes.text());
+        }
+      } else {
+        // Fallback text-only if snapshot unavailable
+        await fetch('https://ntfy.sh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: topic,
+            title: 'Security Cam Alert',
+            message: asciiMsg,
+            priority: 4,
+            tags: ['warning', 'camera']
+          })
+        });
+      }
+    } catch (e) {
+      console.error('Mobile push error:', e);
+    }
+  }
+
+  updatePhoneMockup(message, snapshotDataUrl, timeStr) {
+    const container = document.getElementById('phone-alert-container');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="phone-notification-banner">
+        <div class="banner-header">
+          <span class="banner-app">🚨 SECURITY ALARM</span>
+          <span class="banner-time">${timeStr}</span>
+        </div>
+        <div class="banner-body">${message}</div>
+        ${snapshotDataUrl ? `<img src="${snapshotDataUrl}" class="banner-image-preview" alt="Alert Snapshot" />` : ''}
+      </div>
+    `;
+  }
+
+  renderAlertLogs() {
+    const logList = document.getElementById('alert-event-feed');
+    if (!logList) return;
+
+    if (this.alertHistory.length === 0) {
+      logList.innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 1.5rem; font-size: 0.78rem;">No alerts fired yet.</div>';
+      return;
+    }
+
+    logList.innerHTML = this.alertHistory.slice(0, 15).map(item => `
+      <div class="event-entry alert-fired">
+        <div>
+          <div class="event-title">${item.targets}</div>
+          <div class="event-ts">${item.time}</div>
+        </div>
+        <button class="btn btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="window.notifyEngine.previewAlert('${item.id}')">View</button>
+      </div>
+    `).join('');
+  }
+
+  previewAlert(id) {
+    const item = this.alertHistory.find(x => x.id === id);
+    if (item) {
+      this.updatePhoneMockup(item.msg, item.image, item.time);
+    }
+  }
+}
+
+window.notifyEngine = new NotificationEngine();
+document.addEventListener('DOMContentLoaded', async () => {
+  const video = document.getElementById('camera-video');
+  const canvas = document.getElementById('overlay-canvas');
+  const zoneCanvas = document.getElementById('zone-canvas');
+  const ctx = canvas.getContext('2d');
+  const zoneCtx = zoneCanvas ? zoneCanvas.getContext('2d') : null;
+
+  const btnStart = document.getElementById('btn-start');
+  const btnStop = document.getElementById('btn-stop');
+  const btnZone = document.getElementById('btn-zone');
+  const btnClearZone = document.getElementById('btn-clear-zone');
+  const btnTestSMS = document.getElementById('btn-test-sms');
+
+  const inputPhone = document.getElementById('input-phone');
+  const inputNtfyTopic = document.getElementById('input-ntfy-topic');
+  const inputCooldown = document.getElementById('input-cooldown');
+  const sliderConf = document.getElementById('slider-conf');
+  const badgeConf = document.getElementById('badge-conf');
+
+  const toggleNtfy = document.getElementById('toggle-ntfy');
+  const toggleSms = document.getElementById('toggle-sms');
+  const toggleZoneOnly = document.getElementById('toggle-zone-only');
+
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+
+  let stream = null;
+  let isRunning = false;
+  let animId = null;
+
+  // Initialize Detector
+  await window.secDetector.load();
+  if (statusText) statusText.textContent = 'AI Security Engine Armed';
+
+  // Zone drawing
+  let drawing = false;
+  let sx = 0, sy = 0;
+
+  if (zoneCanvas) {
+    zoneCanvas.addEventListener('mousedown', (e) => {
+      if (!window.secDetector.isDrawingZone) return;
+      const r = zoneCanvas.getBoundingClientRect();
+      sx = (e.clientX - r.left) * (zoneCanvas.width / r.width);
+      sy = (e.clientY - r.top) * (zoneCanvas.height / r.height);
+      drawing = true;
+    });
+
+    zoneCanvas.addEventListener('mousemove', (e) => {
+      if (!drawing || !window.secDetector.isDrawingZone) return;
+      const r = zoneCanvas.getBoundingClientRect();
+      const cx = (e.clientX - r.left) * (zoneCanvas.width / r.width);
+      const cy = (e.clientY - r.top) * (zoneCanvas.height / r.height);
+
+      zoneCtx.clearRect(0, 0, zoneCanvas.width, zoneCanvas.height);
+      zoneCtx.strokeStyle = '#f43f5e';
+      zoneCtx.lineWidth = 2;
+      zoneCtx.setLineDash([4, 4]);
+      zoneCtx.strokeRect(Math.min(sx, cx), Math.min(sy, cy), Math.abs(cx - sx), Math.abs(cy - sy));
+    });
+
+    zoneCanvas.addEventListener('mouseup', (e) => {
+      if (!drawing || !window.secDetector.isDrawingZone) return;
+      drawing = false;
+      const r = zoneCanvas.getBoundingClientRect();
+      const ex = (e.clientX - r.left) * (zoneCanvas.width / r.width);
+      const ey = (e.clientY - r.top) * (zoneCanvas.height / r.height);
+
+      const px = Math.min(sx, ex);
+      const py = Math.min(sy, ey);
+      const pw = Math.abs(ex - sx);
+      const ph = Math.abs(ey - sy);
+
+      if (pw > 20 && ph > 20) {
+        window.secDetector.securityZone = {
+          x: px / zoneCanvas.width,
+          y: py / zoneCanvas.height,
+          w: pw / zoneCanvas.width,
+          h: ph / zoneCanvas.height
+        };
+      }
+      zoneCtx.clearRect(0, 0, zoneCanvas.width, zoneCanvas.height);
+      window.secDetector.isDrawingZone = false;
+      btnZone.classList.remove('btn-active');
+      btnZone.textContent = '📐 Draw Security Zone';
+    });
+  }
+
+  // Camera start
+  async function startCam() {
+    if (isRunning) return;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+
+      isRunning = true;
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      if (zoneCanvas) {
+        zoneCanvas.width = video.videoWidth;
+        zoneCanvas.height = video.videoHeight;
+      }
+
+      runLoop();
+    } catch (e) {
+      alert('Camera error: ' + e.message);
+    }
+  }
+
+  function stopCam() {
+    if (!isRunning) return;
+    if (animId) cancelAnimationFrame(animId);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    isRunning = false;
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+  }
+
+  // Detection loop
+  async function runLoop() {
+    if (!isRunning) return;
+
+    const detections = await window.secDetector.detect(video);
+    const isZoneIntrusion = window.secDetector.renderHUD(ctx, detections, canvas.width, canvas.height);
+
+    const zoneOnly = toggleZoneOnly ? toggleZoneOnly.checked : false;
+    const triggerCondition = zoneOnly ? isZoneIntrusion : (detections.length > 0);
+
+    const feedBox = document.querySelector('.camera-feed-box');
+
+    if (triggerCondition) {
+      if (feedBox) feedBox.classList.add('intruder-active');
+      if (statusDot) statusDot.className = 'dot alerting';
+
+      if (window.notifyEngine.canSend()) {
+        const snap = window.secDetector.generateSnapshot(video, canvas, detections);
+        window.notifyEngine.dispatchSecurityAlert(
+          detections,
+          snap,
+          isZoneIntrusion ? 'Restricted Zone' : 'Camera Sight'
+        );
+        window.secAudio.playSiren();
+        window.secAudio.speak('Warning: Target detected');
+      }
+    } else {
+      if (feedBox) feedBox.classList.remove('intruder-active');
+      if (statusDot) statusDot.className = 'dot';
+    }
+
+    animId = requestAnimationFrame(runLoop);
+  }
+
+  // UI Event Handlers
+  btnStart.addEventListener('click', startCam);
+  btnStop.addEventListener('click', stopCam);
+
+  btnZone.addEventListener('click', () => {
+    window.secDetector.isDrawingZone = !window.secDetector.isDrawingZone;
+    if (window.secDetector.isDrawingZone) {
+      btnZone.classList.add('btn-active');
+      btnZone.textContent = '✏️ Drag Box on Camera...';
+    } else {
+      btnZone.classList.remove('btn-active');
+      btnZone.textContent = '📐 Draw Security Zone';
+    }
+  });
+
+  btnClearZone.addEventListener('click', () => {
+    window.secDetector.securityZone = null;
+    if (zoneCtx) zoneCtx.clearRect(0, 0, zoneCanvas.width, zoneCanvas.height);
+  });
+
+  btnTestSMS.addEventListener('click', () => {
+    const testDets = [{ class: 'Person (Demo Test)', score: 0.96, bbox: [0, 0, 100, 100] }];
+    const snap = window.secDetector.generateSnapshot(video, canvas, testDets);
+    window.notifyEngine.dispatchSecurityAlert(testDets, snap, 'Test Area');
+  });
+
+  inputPhone.addEventListener('input', () => {
+    window.notifyEngine.phone = inputPhone.value;
+  });
+
+  inputNtfyTopic.addEventListener('input', () => {
+    window.notifyEngine.ntfyTopic = inputNtfyTopic.value;
+  });
+
+  inputCooldown.addEventListener('input', () => {
+    window.notifyEngine.cooldownSec = parseInt(inputCooldown.value, 10) || 20;
+  });
+
+  sliderConf.addEventListener('input', () => {
+    const val = parseFloat(sliderConf.value);
+    window.secDetector.minConfidence = val;
+    badgeConf.textContent = `${Math.round(val * 100)}%`;
+  });
+
+  toggleNtfy.addEventListener('change', () => {
+    window.notifyEngine.useNtfy = toggleNtfy.checked;
+  });
+
+  toggleSms.addEventListener('change', () => {
+    window.notifyEngine.useTwilio = toggleSms.checked;
+  });
+});
+  </script>
+</body>
+</html>
